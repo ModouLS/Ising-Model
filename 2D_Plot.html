@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Ising Model Simulation with Plot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+    <style>
+        /* Custom styles for range input track/thumb */
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #0ea5e9; /* sky-500 */
+            cursor: pointer;
+            border-radius: 50%;
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #0ea5e9; /* sky-500 */
+            cursor: pointer;
+            border-radius: 50%;
+            border: none;
+        }
+        .font-sans { font-family: 'Inter', sans-serif; }
+         body {
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+        }
+        #isingCanvas {
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            display: block; /* Remove extra space below canvas */
+        }
+        /* Ensure plot container takes available height for the chart canvas */
+        #plotContainer {
+            display: flex; /* Use flex to make canvas fill the container */
+            flex-direction: column;
+            background-color: #1f2937; /* bg-gray-800 */
+            border-radius: 0.75rem; /* rounded-xl */
+            padding: 1rem; /* p-4 */
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); /* shadow-xl */
+        }
+        #magnetizationPlotCanvas {
+            flex-grow: 1; /* Allow canvas to grow and fill plotContainer */
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans flex flex-col items-center min-h-screen p-4 selection:bg-sky-500 selection:text-white">
+    <div class="w-full max-w-5xl">
+        <header class="mb-6 text-center">
+            <h1 class="text-3xl md:text-4xl font-bold text-sky-400">2D Ising Model Simulation</h1>
+            <p class="text-gray-400 mt-2">A 2D lattice of interacting spins (N x N) with real-time magnetization plot.</p>
+        </header>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 p-6 bg-gray-800 rounded-xl shadow-2xl mb-6">
+            <div>
+                <label for="latticeSizeInput" class="block text-sm font-medium text-sky-300 mb-1">Grid Size (N x N)</label>
+                <input type="number" id="latticeSizeInput" value="50" min="10" max="150" step="10" class="w-full p-2 rounded-md bg-gray-700 border border-gray-600 focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+            </div>
+            <div>
+                <label for="temperatureInput" class="block text-sm font-medium text-sky-300 mb-1">Temperature (T)</label>
+                <div class="flex items-center">
+                    <input type="range" id="temperatureInput" value="2.27" min="0.01" max="5" step="0.01" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-sky-500">
+                    <span id="temperatureValue" class="ml-3 text-sm w-12 text-right text-gray-300">2.27</span>
+                </div>
+            </div>
+            <div>
+                <label for="fieldInput" class="block text-sm font-medium text-sky-300 mb-1">External Field (H)</label>
+                 <div class="flex items-center">
+                    <input type="range" id="fieldInput" value="0.0" min="-1" max="1" step="0.01" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-sky-500">
+                    <span id="fieldValue" class="ml-3 text-sm w-12 text-right text-gray-300">0.00</span>
+                </div>
+            </div>
+            <div>
+                <label for="couplingInput" class="block text-sm font-medium text-sky-300 mb-1">Coupling (J)</label>
+                <div class="flex items-center">
+                    <input type="range" id="couplingInput" value="1.0" min="-1" max="1" step="0.01" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-sky-500">
+                    <span id="couplingValue" class="ml-3 text-sm w-12 text-right text-gray-300">1.00</span>
+                </div>
+            </div>
+            <div>
+                <label for="stepsPerFrameInput" class="block text-sm font-medium text-sky-300 mb-1">MC Sweeps/Frame</label>
+                <input type="number" id="stepsPerFrameInput" value="1" min="1" max="50" class="w-full p-2 rounded-md bg-gray-700 border border-gray-600 focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+            </div>
+            <div>
+                <label for="plotUpdateFreqInput" class="block text-sm font-medium text-sky-300 mb-1">Plot Update Freq (Sweeps)</label>
+                <input type="number" id="plotUpdateFreqInput" value="10" min="1" max="100" class="w-full p-2 rounded-md bg-gray-700 border border-gray-600 focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+            </div>
+             <div class="col-span-1 sm:col-span-2 lg:col-span-3 flex flex-wrap gap-3 justify-center items-center pt-3">
+                <button id="startPauseButton" class="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-semibold rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-opacity-75 transition-all duration-150 ease-in-out transform active:scale-95">Start</button>
+                <button id="resetButton" class="px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-opacity-75 transition-all duration-150 ease-in-out transform active:scale-95">Reset</button>
+                <button id="stepButton" class="px-5 py-2.5 bg-teal-500 hover:bg-teal-600 text-white font-semibold rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-opacity-75 transition-all duration-150 ease-in-out transform active:scale-95">Step (1 Sweep)</button>
+            </div>
+        </div>
+
+        <div class="flex flex-col lg:flex-row gap-6 w-full items-start mb-6">
+            <div class="w-full lg:w-2/5 flex-shrink-0">
+                <div id="canvasContainer" class="w-full aspect-square max-w-md mx-auto lg:mx-0 bg-gray-800 rounded-xl shadow-inner overflow-hidden border border-gray-700">
+                    <canvas id="isingCanvas"></canvas>
+                </div>
+                <p class="text-center text-sm text-gray-400 mt-2">
+                    Spin Up (+1): <span class="inline-block w-3 h-3 bg-sky-500 rounded-sm align-middle border border-gray-600"></span>,
+                    Spin Down (-1): <span class="inline-block w-3 h-3 bg-red-500 rounded-sm align-middle border border-gray-600"></span>
+                </p>
+            </div>
+
+            <div class="w-full lg:w-3/5 flex-grow">
+                 <div id="plotContainer" class="h-80 md:h-96">
+                    <canvas id="magnetizationPlotCanvas"></canvas>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 p-6 bg-gray-800 rounded-xl shadow-2xl text-sm">
+            <div class="p-3 bg-gray-700/50 rounded-lg"><span class="font-semibold text-sky-300">MC Sweeps:</span> <span id="mcStepsDisplay" class="text-gray-200">0</span></div>
+            <div class="p-3 bg-gray-700/50 rounded-lg"><span class="font-semibold text-sky-300">Energy:</span> <span id="energyDisplay" class="text-gray-200">0.00</span></div>
+            <div class="p-3 bg-gray-700/50 rounded-lg"><span class="font-semibold text-sky-300">Magnetization:</span> <span id="magnetizationDisplay" class="text-gray-200">0</span></div>
+            <div class="p-3 bg-gray-700/50 rounded-lg"><span class="font-semibold text-sky-300">M/Spin:</span> <span id="magnetizationPerSpinDisplay" class="text-gray-200">0.0000</span></div>
+            <div class="p-3 bg-gray-700/50 rounded-lg"><span class="font-semibold text-sky-300">Temp (T):</span> <span id="currentTDisplay" class="text-gray-200">2.27</span></div>
+            <div class="p-3 bg-gray-700/50 rounded-lg"><span class="font-semibold text-sky-300">Field (H):</span> <span id="currentHDisplay" class="text-gray-200">0.00</span></div>
+            <div class="p-3 bg-gray-700/50 rounded-lg"><span class="font-semibold text-sky-300">Coupling (J):</span> <span id="currentJDisplay" class="text-gray-200">1.00</span></div>
+        </div>
+    </div>
+
+    <script>
+        // --- IsingModel2D Class (Same as before) ---
+        class IsingModel2D {
+            constructor(N, T, H, J) {
+                this.N = N;
+                this.totalSpins = N * N;
+                this.spins = [];
+                this.monteCarloSteps = 0;
+                this.setTemperature(T);
+                this.setExternalField(H);
+                this.setCoupling(J);
+                this.initializeSpins();
+            }
+
+            initializeSpins() {
+                this.spins = Array(this.totalSpins).fill(0).map(() => (Math.random() < 0.5 ? 1 : -1));
+                this.monteCarloSteps = 0;
+            }
+
+            calculateDeltaE(row, col) {
+                const s_ij = this.spins[row * this.N + col];
+                let neighborSum = 0;
+                neighborSum += this.spins[((row - 1 + this.N) % this.N) * this.N + col];
+                neighborSum += this.spins[((row + 1) % this.N) * this.N + col];
+                neighborSum += this.spins[row * this.N + ((col - 1 + this.N) % this.N)];
+                neighborSum += this.spins[row * this.N + ((col + 1) % this.N)];
+                return 2 * s_ij * (this.J * neighborSum + this.H);
+            }
+
+            metropolisStep() {
+                const T_eff = this.T; // Use the actual temperature
+                if (T_eff <= 0.00001) {
+                     for (let k = 0; k < this.totalSpins; k++) {
+                        const randRow = Math.floor(Math.random() * this.N);
+                        const randCol = Math.floor(Math.random() * this.N);
+                        const deltaE = this.calculateDeltaE(randRow, randCol);
+                        if (deltaE < 0) {
+                            this.spins[randRow * this.N + randCol] *= -1;
+                        }
+                    }
+                } else {
+                    for (let k = 0; k < this.totalSpins; k++) {
+                        const randRow = Math.floor(Math.random() * this.N);
+                        const randCol = Math.floor(Math.random() * this.N);
+                        const deltaE = this.calculateDeltaE(randRow, randCol);
+                        if (deltaE < 0) {
+                            this.spins[randRow * this.N + randCol] *= -1;
+                        } else {
+                            const probability = Math.exp(-deltaE / T_eff);
+                            if (Math.random() < probability) {
+                                this.spins[randRow * this.N + randCol] *= -1;
+                            }
+                        }
+                    }
+                }
+                this.monteCarloSteps++;
+            }
+
+            calculateTotalEnergy() {
+                let energy = 0;
+                for (let r = 0; r < this.N; r++) {
+                    for (let c = 0; c < this.N; c++) {
+                        const spin_ij = this.spins[r * this.N + c];
+                        const spin_right = this.spins[r * this.N + ((c + 1) % this.N)];
+                        const spin_down = this.spins[((r + 1) % this.N) * this.N + c];
+                        energy += -this.J * spin_ij * spin_right;
+                        energy += -this.J * spin_ij * spin_down;
+                        energy += -this.H * spin_ij;
+                    }
+                }
+                return energy;
+            }
+
+            calculateTotalMagnetization() {
+                return this.spins.reduce((sum, spin) => sum + spin, 0);
+            }
+
+            setTemperature(T) { this.T = Math.max(0.00001, T); }
+            setExternalField(H) { this.H = H; }
+            setCoupling(J) { this.J = J; }
+            setGridSize(N_new) {
+                const N_clamped = Math.min(Math.max(N_new, 10), 150); // Max grid size reduced for performance with plot
+                if (N_clamped !== this.N || this.spins.length !== N_clamped * N_clamped) {
+                    this.N = N_clamped;
+                    this.totalSpins = this.N * this.N;
+                    this.initializeSpins();
+                }
+                 return this.N; // Return the actual size set
+            }
+        }
+
+        // --- Global Variables ---
+        let isingModel;
+        let animationFrameId = null;
+        let isRunning = false;
+        let mcSweepsPerFrame;
+        let plotUpdateFrequency; // How many MC sweeps before updating plot
+        const MAX_PLOT_POINTS = 500; // Max data points on the chart
+
+        // --- DOM Elements ---
+        let canvas, ctx, canvasContainer;
+        let plotCanvas, plotCtx, magnetizationChart;
+        let latticeSizeInput, temperatureInput, temperatureValue, fieldInput, fieldValue, couplingInput, couplingValue, stepsPerFrameInput, plotUpdateFreqInput;
+        let startPauseButton, resetButton, stepButton;
+        let mcStepsDisplay, energyDisplay, magnetizationDisplay, magnetizationPerSpinDisplay;
+        let currentTDisplay, currentHDisplay, currentJDisplay;
+
+        const spinUpColor = '#0EA5E9'; // Tailwind sky-500
+        const spinDownColor = '#EF4444'; // Tailwind red-500
+        const gridLineColor = '#374151'; // Tailwind gray-700
+
+        // --- Chart Logic ---
+        function initializeMagnetizationChart() {
+            if (magnetizationChart) {
+                magnetizationChart.destroy();
+            }
+            plotCtx = plotCanvas.getContext('2d');
+            magnetizationChart = new Chart(plotCtx, {
+                type: 'line',
+                data: {
+                    labels: [], // MC Sweeps
+                    datasets: [{
+                        label: 'Magnetization per Spin',
+                        data: [], // M/N_total
+                        borderColor: '#38bdf8', // sky-400
+                        backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                        borderWidth: 1.5,
+                        pointRadius: 0, // No points for performance
+                        tension: 0.1 // Smooths the line a bit
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false, // Important for chart to fill container height
+                    scales: {
+                        x: {
+                            type: 'linear', // Treat x-axis as continuous numbers
+                            title: { display: true, text: 'Monte Carlo Sweeps', color: '#9ca3af' }, // gray-400
+                            ticks: { color: '#9ca3af' },
+                            grid: { color: '#374151' } // gray-700
+                        },
+                        y: {
+                            title: { display: true, text: 'Magnetization / Spin', color: '#9ca3af' },
+                            min: -1,
+                            max: 1,
+                            ticks: { color: '#9ca3af', stepSize: 0.5 },
+                            grid: { color: '#374151' }
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: '#d1d5db' } } // gray-300
+                    },
+                    animation: false // Disable animation for real-time updates
+                }
+            });
+        }
+
+        function updateChartData() {
+            if (!isingModel || !magnetizationChart) return;
+
+            const currentMCSweeps = isingModel.monteCarloSteps;
+            const currentMagPerSpin = isingModel.calculateTotalMagnetization() / isingModel.totalSpins;
+
+            magnetizationChart.data.labels.push(currentMCSweeps);
+            magnetizationChart.data.datasets[0].data.push(currentMagPerSpin);
+
+            // Limit the number of data points
+            if (magnetizationChart.data.labels.length > MAX_PLOT_POINTS) {
+                magnetizationChart.data.labels.shift();
+                magnetizationChart.data.datasets[0].data.shift();
+            }
+            magnetizationChart.update('none'); // 'none' for no animation
+        }
+
+        function resetChartData() {
+            if (magnetizationChart) {
+                magnetizationChart.data.labels = [];
+                magnetizationChart.data.datasets[0].data = [];
+                magnetizationChart.update('none');
+            }
+        }
+
+
+        // --- Simulation Logic ---
+        function simulationLoop() {
+            if (!isRunning) return;
+            for (let i = 0; i < mcSweepsPerFrame; i++) {
+                isingModel.metropolisStep();
+                if (isingModel.monteCarloSteps % plotUpdateFrequency === 0) {
+                    updateChartData();
+                }
+            }
+            drawLattice();
+            updateInfo(); // Update text info less frequently or as needed
+            animationFrameId = requestAnimationFrame(simulationLoop);
+        }
+
+        function startSimulation() {
+            if (isRunning) return;
+            isRunning = true;
+            startPauseButton.textContent = 'Pause';
+            startPauseButton.classList.remove('bg-sky-600', 'hover:bg-sky-700');
+            startPauseButton.classList.add('bg-yellow-500', 'hover:bg-yellow-600', 'focus:ring-yellow-400');
+            simulationLoop();
+        }
+
+        function pauseSimulation() {
+            if (!isRunning) return;
+            isRunning = false;
+            startPauseButton.textContent = 'Start';
+            startPauseButton.classList.remove('bg-yellow-500', 'hover:bg-yellow-600', 'focus:ring-yellow-400');
+            startPauseButton.classList.add('bg-sky-600', 'hover:bg-sky-700');
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+        }
+
+        // --- Drawing Logic ---
+        function drawLattice() {
+            if (!ctx || !isingModel) return;
+            const N = isingModel.N;
+            const availableWidth = canvas.clientWidth; 
+            const spinSize = Math.max(1, Math.floor(availableWidth / N));
+
+            canvas.width = spinSize * N;
+            canvas.height = spinSize * N;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            for (let r = 0; r < N; r++) {
+                for (let c = 0; c < N; c++) {
+                    ctx.fillStyle = isingModel.spins[r * N + c] === 1 ? spinUpColor : spinDownColor;
+                    ctx.fillRect(c * spinSize, r * spinSize, spinSize, spinSize);
+                }
+            }
+
+            if (spinSize > 4 && N <= 50) { 
+                ctx.strokeStyle = gridLineColor;
+                ctx.lineWidth = 0.5;
+                for (let i = 0; i <= N; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(i * spinSize, 0);
+                    ctx.lineTo(i * spinSize, canvas.height);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(0, i * spinSize);
+                    ctx.lineTo(canvas.width, i * spinSize);
+                    ctx.stroke();
+                }
+            }
+        }
+
+
+        // --- UI Updates ---
+        function updateInfo() {
+            if (!isingModel) return;
+            energyDisplay.textContent = isingModel.calculateTotalEnergy().toFixed(2);
+            const M = isingModel.calculateTotalMagnetization();
+            magnetizationDisplay.textContent = M;
+            magnetizationPerSpinDisplay.textContent = (M / isingModel.totalSpins).toFixed(4);
+            mcStepsDisplay.textContent = isingModel.monteCarloSteps;
+            currentTDisplay.textContent = isingModel.T.toFixed(2);
+            currentHDisplay.textContent = isingModel.H.toFixed(2);
+            currentJDisplay.textContent = isingModel.J.toFixed(2);
+        }
+
+        function resizeCanvasElements() {
+            if (canvasContainer && canvas) {
+                const containerWidth = canvasContainer.clientWidth;
+                canvas.style.width = containerWidth + 'px';
+                canvas.style.height = containerWidth + 'px'; 
+                if (isingModel) {
+                    drawLattice();
+                }
+            }
+            if (magnetizationChart) {
+                // Chart.js will use the dimensions of its container (#plotContainer)
+                // which has h-80 md:h-96.
+                // Ensure the canvas element itself can resize within that.
+                magnetizationChart.resize();
+            }
+        }
+
+
+        function setupRangeWithValueDisplay(rangeId, displayId, modelSetter, propertyName, infoDisplayId) {
+            const rangeInput = document.getElementById(rangeId);
+            const valueDisplayElement = document.getElementById(displayId);
+            const currentInfoDisplayElement = document.getElementById(infoDisplayId);
+
+            rangeInput.addEventListener('input', () => {
+                const value = parseFloat(rangeInput.value);
+                valueDisplayElement.textContent = value.toFixed(2);
+                if (modelSetter) isingModel[modelSetter](value);
+                if (currentInfoDisplayElement) currentInfoDisplayElement.textContent = value.toFixed(2);
+                 if (!isRunning) {
+                    updateInfo();
+                    if (isingModel.monteCarloSteps > 0) { 
+                        updateChartData(); 
+                    }
+                    drawLattice();
+                 }
+            });
+            const initialValue = parseFloat(rangeInput.value);
+            valueDisplayElement.textContent = initialValue.toFixed(2);
+            if (currentInfoDisplayElement) currentInfoDisplayElement.textContent = initialValue.toFixed(2);
+        }
+
+        function updateSimParametersFromInputs() {
+            mcSweepsPerFrame = parseInt(stepsPerFrameInput.value);
+            if (isNaN(mcSweepsPerFrame) || mcSweepsPerFrame < 1) mcSweepsPerFrame = 1;
+            if (mcSweepsPerFrame > 50) mcSweepsPerFrame = 50; 
+            stepsPerFrameInput.value = mcSweepsPerFrame;
+
+            plotUpdateFrequency = parseInt(plotUpdateFreqInput.value);
+            if (isNaN(plotUpdateFrequency) || plotUpdateFrequency < 1) plotUpdateFrequency = 1;
+            if (plotUpdateFrequency > 100) plotUpdateFrequency = 100;
+            plotUpdateFreqInput.value = plotUpdateFrequency;
+        }
+
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            canvasContainer = document.getElementById('canvasContainer');
+            canvas = document.getElementById('isingCanvas');
+            ctx = canvas.getContext('2d');
+
+            plotCanvas = document.getElementById('magnetizationPlotCanvas');
+            // plotCtx is set in initializeMagnetizationChart
+
+            latticeSizeInput = document.getElementById('latticeSizeInput');
+            temperatureInput = document.getElementById('temperatureInput');
+            temperatureValue = document.getElementById('temperatureValue');
+            fieldInput = document.getElementById('fieldInput');
+            fieldValue = document.getElementById('fieldValue');
+            couplingInput = document.getElementById('couplingInput');
+            couplingValue = document.getElementById('couplingValue');
+            stepsPerFrameInput = document.getElementById('stepsPerFrameInput');
+            plotUpdateFreqInput = document.getElementById('plotUpdateFreqInput');
+
+
+            startPauseButton = document.getElementById('startPauseButton');
+            resetButton = document.getElementById('resetButton');
+            stepButton = document.getElementById('stepButton');
+
+            mcStepsDisplay = document.getElementById('mcStepsDisplay');
+            energyDisplay = document.getElementById('energyDisplay');
+            magnetizationDisplay = document.getElementById('magnetizationDisplay');
+            magnetizationPerSpinDisplay = document.getElementById('magnetizationPerSpinDisplay');
+            currentTDisplay = document.getElementById('currentTDisplay');
+            currentHDisplay = document.getElementById('currentHDisplay');
+            currentJDisplay = document.getElementById('currentJDisplay');
+
+            let initialN = parseInt(latticeSizeInput.value);
+            let initialT = parseFloat(temperatureInput.value);
+            let initialH = parseFloat(fieldInput.value);
+            let initialJ = parseFloat(couplingInput.value);
+            updateSimParametersFromInputs();
+
+            isingModel = new IsingModel2D(initialN, initialT, initialH, initialJ);
+
+            setupRangeWithValueDisplay('temperatureInput', 'temperatureValue', 'setTemperature', 'T', 'currentTDisplay');
+            setupRangeWithValueDisplay('fieldInput', 'fieldValue', 'setExternalField', 'H', 'currentHDisplay');
+            setupRangeWithValueDisplay('couplingInput', 'couplingValue', 'setCoupling', 'J', 'currentJDisplay');
+
+            latticeSizeInput.addEventListener('change', () => {
+                let newSize = parseInt(latticeSizeInput.value);
+                const wasRunning = isRunning;
+                if (wasRunning) pauseSimulation();
+
+                const actualNewSize = isingModel.setGridSize(newSize); 
+                if (actualNewSize !== newSize) {
+                    latticeSizeInput.value = actualNewSize; 
+                }
+
+                if (actualNewSize > 75) { 
+                    stepsPerFrameInput.value = 1;
+                } else if (actualNewSize > 40) {
+                    stepsPerFrameInput.value = Math.min(5, parseInt(stepsPerFrameInput.value));
+                }
+                updateSimParametersFromInputs();
+                resetChartData();
+                resizeCanvasElements(); 
+                updateInfo();
+                if (wasRunning) startSimulation();
+                else drawLattice(); 
+            });
+
+            stepsPerFrameInput.addEventListener('change', updateSimParametersFromInputs);
+            plotUpdateFreqInput.addEventListener('change', updateSimParametersFromInputs);
+
+
+            startPauseButton.addEventListener('click', () => {
+                if (isRunning) pauseSimulation();
+                else startSimulation();
+            });
+
+            resetButton.addEventListener('click', () => {
+                pauseSimulation();
+                isingModel.setTemperature(parseFloat(temperatureInput.value));
+                isingModel.setExternalField(parseFloat(fieldInput.value));
+                isingModel.setCoupling(parseFloat(couplingInput.value));
+                const newSize = parseInt(latticeSizeInput.value);
+                const actualNewSize = isingModel.setGridSize(newSize);
+                 if (actualNewSize !== newSize) {
+                    latticeSizeInput.value = actualNewSize;
+                }
+                updateSimParametersFromInputs();
+                resetChartData();
+                resizeCanvasElements();
+                updateInfo();
+                drawLattice(); 
+            });
+
+            stepButton.addEventListener('click', () => {
+                if (isRunning) pauseSimulation();
+                isingModel.metropolisStep();
+                 if (isingModel.monteCarloSteps % plotUpdateFrequency === 0 || plotUpdateFrequency === 1) {
+                    updateChartData();
+                }
+                drawLattice();
+                updateInfo();
+            });
+
+            window.addEventListener('resize', resizeCanvasElements);
+
+            initializeMagnetizationChart();
+            resizeCanvasElements(); 
+            updateInfo();
+            drawLattice(); 
+        });
+    </script>
+</body>
+</html>

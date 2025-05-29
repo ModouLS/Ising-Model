@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>1D Ising Model Simulation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for range input track/thumb */
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #0ea5e9; /* sky-500 */
+            cursor: pointer;
+            border-radius: 50%;
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #0ea5e9; /* sky-500 */
+            cursor: pointer;
+            border-radius: 50%;
+            border: none;
+        }
+        .font-sans { font-family: 'Inter', sans-serif; }
+         body {
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans flex flex-col items-center min-h-screen p-4 selection:bg-sky-500 selection:text-white">
+    <div class="w-full max-w-5xl">
+        <header class="mb-6 text-center">
+            <h1 class="text-3xl md:text-4xl font-bold text-sky-400">1D Ising Model Simulation</h1>
+            <p class="text-gray-400 mt-2">Explore the behavior of a one-dimensional lattice of interacting spins.</p>
+        </header>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 p-6 bg-gray-800 rounded-xl shadow-2xl mb-6">
+            <div>
+                <label for="latticeSizeInput" class="block text-sm font-medium text-sky-300 mb-1">Lattice Size (N)</label>
+                <input type="number" id="latticeSizeInput" value="100" min="10" max="500" class="w-full p-2 rounded-md bg-gray-700 border border-gray-600 focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+            </div>
+            <div>
+                <label for="temperatureInput" class="block text-sm font-medium text-sky-300 mb-1">Temperature (T)</label>
+                <div class="flex items-center">
+                    <input type="range" id="temperatureInput" value="2.0" min="0.01" max="10" step="0.01" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-sky-500">
+                    <span id="temperatureValue" class="ml-3 text-sm w-12 text-right text-gray-300">2.00</span>
+                </div>
+            </div>
+            <div>
+                <label for="fieldInput" class="block text-sm font-medium text-sky-300 mb-1">External Field (H)</label>
+                 <div class="flex items-center">
+                    <input type="range" id="fieldInput" value="0.0" min="-2" max="2" step="0.01" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-sky-500">
+                    <span id="fieldValue" class="ml-3 text-sm w-12 text-right text-gray-300">0.00</span>
+                </div>
+            </div>
+            <div>
+                <label for="couplingInput" class="block text-sm font-medium text-sky-300 mb-1">Coupling (J)</label>
+                <div class="flex items-center">
+                    <input type="range" id="couplingInput" value="1.0" min="-2" max="2" step="0.01" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-sky-500">
+                    <span id="couplingValue" class="ml-3 text-sm w-12 text-right text-gray-300">1.00</span>
+                </div>
+            </div>
+            <div>
+                <label for="stepsPerFrameInput" class="block text-sm font-medium text-sky-300 mb-1">MC Sweeps/Frame</label>
+                <input type="number" id="stepsPerFrameInput" value="100" min="1" max="10000" class="w-full p-2 rounded-md bg-gray-700 border border-gray-600 focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+            </div>
+            <div class="col-span-1 sm:col-span-2 lg:col-span-3 flex flex-wrap gap-3 justify-center items-center pt-3">
+                <button id="startPauseButton" class="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-semibold rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-opacity-75 transition-all duration-150 ease-in-out transform active:scale-95">Start</button>
+                <button id="resetButton" class="px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-opacity-75 transition-all duration-150 ease-in-out transform active:scale-95">Reset</button>
+                <button id="stepButton" class="px-5 py-2.5 bg-teal-500 hover:bg-teal-600 text-white font-semibold rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-opacity-75 transition-all duration-150 ease-in-out transform active:scale-95">Step (1 Sweep)</button>
+            </div>
+        </div>
+
+        <div id="canvasContainer" class="w-full h-24 md:h-32 bg-gray-800 rounded-xl shadow-inner overflow-hidden mb-6 border border-gray-700">
+            <canvas id="isingCanvas" class="w-full h-full"></canvas>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 p-6 bg-gray-800 rounded-xl shadow-2xl text-sm">
+            <div class="p-3 bg-gray-700/50 rounded-lg"><span class="font-semibold text-sky-300">MC Sweeps:</span> <span id="mcStepsDisplay" class="text-gray-200">0</span></div>
+            <div class="p-3 bg-gray-700/50 rounded-lg"><span class="font-semibold text-sky-300">Energy:</span> <span id="energyDisplay" class="text-gray-200">0.00</span></div>
+            <div class="p-3 bg-gray-700/50 rounded-lg"><span class="font-semibold text-sky-300">Magnetization:</span> <span id="magnetizationDisplay" class="text-gray-200">0</span></div>
+            <div class="p-3 bg-gray-700/50 rounded-lg"><span class="font-semibold text-sky-300">M/Spin:</span> <span id="magnetizationPerSpinDisplay" class="text-gray-200">0.0000</span></div>
+            <div class="p-3 bg-gray-700/50 rounded-lg"><span class="font-semibold text-sky-300">Temp (T):</span> <span id="currentTDisplay" class="text-gray-200">2.00</span></div>
+            <div class="p-3 bg-gray-700/50 rounded-lg"><span class="font-semibold text-sky-300">Field (H):</span> <span id="currentHDisplay" class="text-gray-200">0.00</span></div>
+            <div class="p-3 bg-gray-700/50 rounded-lg"><span class="font-semibold text-sky-300">Coupling (J):</span> <span id="currentJDisplay" class="text-gray-200">1.00</span></div>
+        </div>
+    </div>
+
+    <script>
+        // --- IsingModel1D Class ---
+        class IsingModel1D {
+            constructor(N, T, H, J) {
+                this.N = N; // Number of spins
+                this.spins = []; // Array of +1 or -1
+                this.monteCarloSteps = 0; // Total MC sweeps performed
+
+                this.setTemperature(T);
+                this.setExternalField(H);
+                this.setCoupling(J);
+                this.initializeSpins();
+            }
+
+            initializeSpins() {
+                this.spins = Array(this.N).fill(0).map(() => (Math.random() < 0.5 ? 1 : -1));
+                this.monteCarloSteps = 0;
+            }
+
+            calculateDeltaE(spinIndex) {
+                const s_i = this.spins[spinIndex];
+                const s_prev = this.spins[(spinIndex - 1 + this.N) % this.N];
+                const s_next = this.spins[(spinIndex + 1) % this.N];
+                return 2 * s_i * (this.J * (s_prev + s_next) + this.H);
+            }
+
+            metropolisStep() {
+                if (this.T <= 0.00001) { // T=0 limit
+                     for (let i = 0; i < this.N; i++) {
+                        const randomIndex = Math.floor(Math.random() * this.N);
+                        const deltaE = this.calculateDeltaE(randomIndex);
+                        if (deltaE < 0) {
+                            this.spins[randomIndex] *= -1;
+                        }
+                    }
+                } else {
+                    for (let i = 0; i < this.N; i++) {
+                        const randomIndex = Math.floor(Math.random() * this.N);
+                        const deltaE = this.calculateDeltaE(randomIndex);
+                        if (deltaE < 0) {
+                            this.spins[randomIndex] *= -1;
+                        } else {
+                            const probability = Math.exp(-deltaE / this.T);
+                            if (Math.random() < probability) {
+                                this.spins[randomIndex] *= -1;
+                            }
+                        }
+                    }
+                }
+                this.monteCarloSteps++;
+            }
+
+            calculateTotalEnergy() {
+                let energy = 0;
+                for (let i = 0; i < this.N; i++) {
+                    energy += -this.J * this.spins[i] * this.spins[(i + 1) % this.N];
+                    energy += -this.H * this.spins[i];
+                }
+                return energy;
+            }
+
+            calculateTotalMagnetization() {
+                return this.spins.reduce((sum, spin) => sum + spin, 0);
+            }
+
+            setTemperature(T) { this.T = Math.max(0.00001, T); }
+            setExternalField(H) { this.H = H; }
+            setCoupling(J) { this.J = J; }
+            setLatticeSize(N) {
+                // Adjusted max lattice size for better arrow visibility if they become too small
+                if (N !== this.N && N >=10 && N <= 500) {
+                    this.N = N;
+                    this.initializeSpins();
+                } else if (N > 500) {
+                    this.N = 500; // Cap at 500
+                     this.initializeSpins();
+                }
+            }
+        }
+
+        // --- Global Variables ---
+        let isingModel;
+        let animationFrameId = null;
+        let isRunning = false;
+        let mcSweepsPerFrame;
+
+        // --- DOM Elements ---
+        let canvas, ctx, canvasContainer;
+        let latticeSizeInput, temperatureInput, temperatureValue, fieldInput, fieldValue, couplingInput, couplingValue, stepsPerFrameInput;
+        let startPauseButton, resetButton, stepButton;
+        let mcStepsDisplay, energyDisplay, magnetizationDisplay, magnetizationPerSpinDisplay;
+        let currentTDisplay, currentHDisplay, currentJDisplay;
+
+        const spinUpColor = '#0EA5E9'; // Tailwind sky-500
+        const spinDownColor = '#EF4444'; // Tailwind red-500
+        // const spinBorderColor = '#4B5563'; // Tailwind gray-600 - Not used for arrows
+
+        // --- Simulation Logic ---
+        function simulationLoop() {
+            if (!isRunning) return;
+            for (let i = 0; i < mcSweepsPerFrame; i++) {
+                isingModel.metropolisStep();
+            }
+            drawLattice();
+            updateInfo();
+            animationFrameId = requestAnimationFrame(simulationLoop);
+        }
+
+        function startSimulation() {
+            if (isRunning) return;
+            isRunning = true;
+            startPauseButton.textContent = 'Pause';
+            startPauseButton.classList.remove('bg-sky-600', 'hover:bg-sky-700');
+            startPauseButton.classList.add('bg-yellow-500', 'hover:bg-yellow-600', 'focus:ring-yellow-400');
+            simulationLoop();
+        }
+
+        function pauseSimulation() {
+            if (!isRunning) return;
+            isRunning = false;
+            startPauseButton.textContent = 'Start';
+            startPauseButton.classList.remove('bg-yellow-500', 'hover:bg-yellow-600', 'focus:ring-yellow-400');
+            startPauseButton.classList.add('bg-sky-600', 'hover:bg-sky-700');
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+        }
+
+        // --- Drawing Logic ---
+        function drawLattice() {
+            if (!ctx || !isingModel) return;
+            const N = isingModel.N;
+            const spinCellWidth = canvas.width / N; // Width of the cell for each spin
+            const spinHeight = canvas.height;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const arrowWidth = Math.min(spinCellWidth * 0.6, spinHeight * 0.4); // Width of the arrowhead
+            const arrowHeadHeight = Math.min(spinCellWidth * 0.4, spinHeight * 0.3); // Height of the arrowhead
+            const lineWidth = Math.max(1, Math.min(spinCellWidth * 0.15, 4)); // Thickness of the arrow line
+
+            for (let i = 0; i < N; i++) {
+                const x = i * spinCellWidth + spinCellWidth / 2; // Center x of the spin cell
+                ctx.strokeStyle = isingModel.spins[i] === 1 ? spinUpColor : spinDownColor;
+                ctx.fillStyle = isingModel.spins[i] === 1 ? spinUpColor : spinDownColor;
+                ctx.lineWidth = lineWidth;
+
+                ctx.beginPath();
+                if (isingModel.spins[i] === 1) { // Spin Up
+                    // Line
+                    ctx.moveTo(x, spinHeight * 0.85); // Start near bottom
+                    ctx.lineTo(x, spinHeight * 0.15 + arrowHeadHeight); // End just before arrowhead
+                    // Arrowhead
+                    ctx.moveTo(x - arrowWidth / 2, spinHeight * 0.15 + arrowHeadHeight);
+                    ctx.lineTo(x, spinHeight * 0.15);
+                    ctx.lineTo(x + arrowWidth / 2, spinHeight * 0.15 + arrowHeadHeight);
+                } else { // Spin Down
+                    // Line
+                    ctx.moveTo(x, spinHeight * 0.15); // Start near top
+                    ctx.lineTo(x, spinHeight * 0.85 - arrowHeadHeight); // End just before arrowhead
+                    // Arrowhead
+                    ctx.moveTo(x - arrowWidth / 2, spinHeight * 0.85 - arrowHeadHeight);
+                    ctx.lineTo(x, spinHeight * 0.85);
+                    ctx.lineTo(x + arrowWidth / 2, spinHeight * 0.85 - arrowHeadHeight);
+                }
+                ctx.stroke();
+                // Optional: fill arrowhead
+                // To fill the arrowhead, you'd need to close the path for the head and fill it
+                // For simplicity, we are just stroking the lines.
+                // If you want filled arrowheads:
+                // if (isingModel.spins[i] === 1) {
+                //     ctx.beginPath();
+                //     ctx.moveTo(x - arrowWidth / 2, spinHeight * 0.15 + arrowHeadHeight);
+                //     ctx.lineTo(x, spinHeight * 0.15);
+                //     ctx.lineTo(x + arrowWidth / 2, spinHeight * 0.15 + arrowHeadHeight);
+                //     ctx.closePath();
+                //     ctx.fill();
+                // } else {
+                //     ctx.beginPath();
+                //     ctx.moveTo(x - arrowWidth / 2, spinHeight * 0.85 - arrowHeadHeight);
+                //     ctx.lineTo(x, spinHeight * 0.85);
+                //     ctx.lineTo(x + arrowWidth / 2, spinHeight * 0.85 - arrowHeadHeight);
+                //     ctx.closePath();
+                //     ctx.fill();
+                // }
+            }
+        }
+
+
+        // --- UI Updates ---
+        function updateInfo() {
+            if (!isingModel) return;
+            energyDisplay.textContent = isingModel.calculateTotalEnergy().toFixed(2);
+            const M = isingModel.calculateTotalMagnetization();
+            magnetizationDisplay.textContent = M;
+            magnetizationPerSpinDisplay.textContent = (M / isingModel.N).toFixed(4);
+            mcStepsDisplay.textContent = isingModel.monteCarloSteps;
+            currentTDisplay.textContent = isingModel.T.toFixed(2);
+            currentHDisplay.textContent = isingModel.H.toFixed(2);
+            currentJDisplay.textContent = isingModel.J.toFixed(2);
+        }
+
+        function resizeCanvas() {
+            if (!canvasContainer || !canvas) return;
+            canvas.width = canvasContainer.clientWidth;
+            canvas.height = canvasContainer.clientHeight;
+            if (isingModel) {
+                drawLattice();
+            }
+        }
+
+        function setupRangeWithValueDisplay(rangeId, displayId, modelSetter, propertyName, infoDisplayId) {
+            const rangeInput = document.getElementById(rangeId);
+            const valueDisplayElement = document.getElementById(displayId);
+            const currentInfoDisplayElement = document.getElementById(infoDisplayId);
+
+            rangeInput.addEventListener('input', () => {
+                const value = parseFloat(rangeInput.value);
+                valueDisplayElement.textContent = value.toFixed(2);
+                if (modelSetter) isingModel[modelSetter](value);
+                if (currentInfoDisplayElement) currentInfoDisplayElement.textContent = value.toFixed(2);
+                 if (!isRunning) {
+                    updateInfo();
+                 }
+            });
+            const initialValue = parseFloat(rangeInput.value);
+            valueDisplayElement.textContent = initialValue.toFixed(2);
+            if (currentInfoDisplayElement) currentInfoDisplayElement.textContent = initialValue.toFixed(2);
+        }
+
+        function updateMCSweepsPerFrame() {
+            let val = parseInt(stepsPerFrameInput.value);
+            if (isNaN(val) || val < 1) val = 1;
+            if (val > 10000) val = 10000;
+            mcSweepsPerFrame = val;
+            stepsPerFrameInput.value = val;
+        }
+
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            canvasContainer = document.getElementById('canvasContainer');
+            canvas = document.getElementById('isingCanvas');
+            ctx = canvas.getContext('2d');
+
+            latticeSizeInput = document.getElementById('latticeSizeInput');
+            temperatureInput = document.getElementById('temperatureInput');
+            temperatureValue = document.getElementById('temperatureValue');
+            fieldInput = document.getElementById('fieldInput');
+            fieldValue = document.getElementById('fieldValue');
+            couplingInput = document.getElementById('couplingInput');
+            couplingValue = document.getElementById('couplingValue');
+            stepsPerFrameInput = document.getElementById('stepsPerFrameInput');
+
+            startPauseButton = document.getElementById('startPauseButton');
+            resetButton = document.getElementById('resetButton');
+            stepButton = document.getElementById('stepButton');
+
+            mcStepsDisplay = document.getElementById('mcStepsDisplay');
+            energyDisplay = document.getElementById('energyDisplay');
+            magnetizationDisplay = document.getElementById('magnetizationDisplay');
+            magnetizationPerSpinDisplay = document.getElementById('magnetizationPerSpinDisplay');
+            currentTDisplay = document.getElementById('currentTDisplay');
+            currentHDisplay = document.getElementById('currentHDisplay');
+            currentJDisplay = document.getElementById('currentJDisplay');
+
+            let initialN = parseInt(latticeSizeInput.value);
+            let initialT = parseFloat(temperatureInput.value);
+            let initialH = parseFloat(fieldInput.value);
+            let initialJ = parseFloat(couplingInput.value);
+            updateMCSweepsPerFrame();
+
+            isingModel = new IsingModel1D(initialN, initialT, initialH, initialJ);
+
+            setupRangeWithValueDisplay('temperatureInput', 'temperatureValue', 'setTemperature', 'T', 'currentTDisplay');
+            setupRangeWithValueDisplay('fieldInput', 'fieldValue', 'setExternalField', 'H', 'currentHDisplay');
+            setupRangeWithValueDisplay('couplingInput', 'couplingValue', 'setCoupling', 'J', 'currentJDisplay');
+
+            latticeSizeInput.addEventListener('change', () => {
+                const newSize = parseInt(latticeSizeInput.value);
+                // Cap max lattice size to 500 for better arrow visibility
+                const effectiveNewSize = Math.min(newSize, 500);
+                 if (effectiveNewSize !== newSize) {
+                    latticeSizeInput.value = effectiveNewSize; // Update input if capped
+                }
+
+                if (effectiveNewSize >= 10) {
+                    const wasRunning = isRunning;
+                    if (wasRunning) pauseSimulation();
+                    isingModel.setLatticeSize(effectiveNewSize);
+                    // Adjust MC sweeps/frame based on new size, ensuring it's reasonable.
+                    // For smaller N, can afford more sweeps. For larger N, might reduce.
+                    // This is a heuristic, can be tuned.
+                    stepsPerFrameInput.value = Math.min(10000, Math.max(1, Math.floor(5000 / effectiveNewSize) * effectiveNewSize) || effectiveNewSize);
+                    updateMCSweepsPerFrame();
+                    resizeCanvas();
+                    updateInfo();
+                    if (wasRunning) startSimulation();
+                } else {
+                    latticeSizeInput.value = isingModel.N; // Revert to old N if input is too small
+                }
+            });
+
+            stepsPerFrameInput.addEventListener('change', updateMCSweepsPerFrame);
+
+            startPauseButton.addEventListener('click', () => {
+                if (isRunning) pauseSimulation();
+                else startSimulation();
+            });
+
+            resetButton.addEventListener('click', () => {
+                pauseSimulation();
+                isingModel.initializeSpins();
+                isingModel.setTemperature(parseFloat(temperatureInput.value));
+                isingModel.setExternalField(parseFloat(fieldInput.value));
+                isingModel.setCoupling(parseFloat(couplingInput.value));
+                isingModel.setLatticeSize(parseInt(latticeSizeInput.value));
+                updateMCSweepsPerFrame();
+                resizeCanvas();
+                updateInfo();
+            });
+
+            stepButton.addEventListener('click', () => {
+                if (isRunning) pauseSimulation();
+                isingModel.metropolisStep();
+                drawLattice();
+                updateInfo();
+            });
+
+            window.addEventListener('resize', resizeCanvas);
+
+            resizeCanvas();
+            updateInfo();
+        });
+    </script>
+</body>
+</html>
